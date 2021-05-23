@@ -1,0 +1,36 @@
+(App (App (Con "Cons") x) xs)
+
+App q w
+
+q = (App (Con "Cons") x)  --> x = (Num 3)
+w = xs
+
+
+(App (App (Con "Cons") (Num 3)) (App (App (Con "Cons") (Num 2)) (App (App (Con "Cons") (Num 1)) (Con "Nil"))))
+
+App q w
+
+q = (App (Con "Cons") (Num 3))
+w = (App (App (Con "Cons") (Num 2)) (App (App (Con "Cons") (Num 1)) (Con "Nil")))  --> xs
+
+
+evalE g (App (App (Con "Cons") x) xs) = 
+  case (evalE g x) of
+    (I n) -> (Cons (n) (evalE g xs))
+    _     -> error "runtime error: type checking must have failed"
+
+
+-- evaluates addition
+evalE g (App (App (Prim Add) a) b) = case (evalE g a, evalE g b) of
+  (I a', I b') -> I (a' + b')
+  _            -> undefined
+
+  {-
+AppOp1 Exp
+          | AppOp2 Value
+          | EnvOp1 Id Exp
+          | IfOp1 Exp Exp
+          | V Value
+
+-}
+

@@ -1,0 +1,16 @@
+
+{-
+    You need to leave the inside of the function unevaluated untill you actually need it. 
+    Then, the ones part will only be further unpacked when it is needed. The Cons value is perfectly fine with accepting a 
+    function value in its second argument (left unevaluated). 
+    The Cons value can then be evaluated on the head operator (which should result from the stack).
+    For tail the same holds only you get the unevaluated 'ones' back instead of the head integer.
+-}
+
+{-
+    -- Task 5
+    State1 t (Let ((Bind x tao vList body):bs) e1) gamma -> State1 t e1 (E.add gamma (x, (Closure gamma' (Bind x tao vList body))))
+      where
+        gamma' = (E.add gamma (x, (Closure gamma' (Bind x tao vList body))))
+
+-}

@@ -1,0 +1,124 @@
+module MinHS.Evaluator where
+import qualified MinHS.Env as E
+import MinHS.Syntax
+import MinHS.Pretty
+import qualified Text.PrettyPrint.ANSI.Leijen as PP
+import Debug.Trace
+
+type VEnv = E.Env Value
+
+data Value = I Integer
+           | B Bool
+           | Nil
+           | Cons Integer Value
+           -- Add other variants as needed
+           deriving (Show, Read)
+
+instance PP.Pretty Value where
+  pretty (I i) = numeric $ i
+  pretty (B b) = datacon $ show b
+  pretty (Nil) = datacon "Nil"
+  pretty (Cons x v) = PP.parens (datacon "Cons" PP.<+> numeric x PP.<+> PP.pretty v)
+  pretty _ = undefined -- should not ever be used
+
+
+-- Bool tells me whether the machine is in return mode (True) or in calculation mode (False)
+-- Exp is the current expression
+-- To add: stack control and environment
+
+data Frame = AppOp1 Exp
+          | AppOp2 Value
+          | EnvOp1 Id Exp
+          | IfOp1 Exp Exp
+          | BinOp1 Op Exp
+          | BinOp2 Op Value
+          | V Value
+          | E Exp
+          deriving(Show)
+
+type Stack = [Frame]
+
+data MachineState = State1 Stack Exp VEnv
+                  | State2 Stack VEnv
+                  | State3 Stack Value VEnv
+                  deriving(Show)
+
+
+-- IsReturnMode Bool | CurrentExpression Exp -- | Stack [Integer] | Gamma VEnv -- add the definition
+
+ 
+-- do not change this definition
+evaluate :: Program -> Value
+evaluate [Bind _ _ _ e] = evalE e
+
+-- do not change this definition
+evalE :: Exp -> Value
+evalE exp = loop (msInitialState exp)
+  where 
+    loop ms = -- (trace "debug message") $  -- uncomment this line and pretty print the machine state/parts of it to
+                                            -- observe the machine states
+             if (msInFinalState newMsState)
+                then msGetValue newMsState
+                else loop newMsState
+              where
+                 newMsState = msStep ms
+
+
+msInitialState :: Exp -> MachineState
+msInitialState exp = State2 [E exp] E.empty
+
+
+-- checks whether machine is in final state
+msInFinalState :: MachineState -> Bool
+msInFinalState ms =
+  case ms of
+    State1 [] (Num n) _ -> True
+    State1 [] (Con "True") _ -> True
+    State1 [] (Con "False") _ -> True
+    State3 [] Nil _ -> True
+    State2 [BinOp2 op y] _ -> True
+    State3 [] (I x) _ -> True
+    State3 [] (B x) _ -> True
+
+    _ -> False
+
+
+-- returns the final value, if machine in final state, Nothing otherwise
+msGetValue :: MachineState -> Value
+msGetValue ms =
+  case ms of
+    State1 [] (Num x) _ -> I x
+    State1 [] (Con "True") _ -> B True
+    State1 [] (Con "False") _ -> B False
+    State1 [] (Con "Nil") _ -> Nil
+    State3 [] (Cons x y) _ -> Cons x y
+    State1 [] (App (App (Con "Cons") (Num x)) (Con "Nil")) _ -> Cons x Nil
+    -- State2 [BinOp2 op y] _ -> getOp ms
+    State3 [] Nil _ -> Nil
+    State3 [] (I x) _ -> I x
+    State3 [] (B x) _ -> B x
+    _ -> I 1
+    -- State1 True x [E xs] _ -> Cons x msStep State2 False xs _
+
+
+msStep :: MachineState -> MachineState
+msStep ms =
+  case ms of
+    
+    State2 [E (Num n)] gamma -> State1 [] (Num n) gamma
+    State2 [E (Con "True")] gamma -> State1 [] (Con "True") gamma
+    State2 [E (Con "False")] gamma -> State1 [] (Con "False") gamma
+    
+    State1 ((E (Num x)):t) (Num y) gamma -> State1 t (Num x) gamma
+    State2 ((E (Num x)):t) gamma -> State1 t (Num x) gamma
+    State2 ((V (I x)):t) gamma -> State1 t (Num x) gamma
+    State2 ((V (B True)):t) gamma -> State1 t (Con "True") gamma
+    State2 ((V (B False)):t) gamma -> State1 t (Con "False") gamma
+    State2 ((V Nil):t) gamma -> State1 t (Con "Nil") gamma
+    State2 ((E (Con x)):t) gamma -> State1 t (Con x)  gamma
+    State2 ((E (App (App (Con "Cons") x) y)):t) gamma -> State1 ((E x):(AppOp1 y):t) x gamma
+    State1 ((E (App (App (Con "Cons") x) y)):t) _ gamma -> State1 ((E x):(AppOp1 y):t) x gamma
+
+    State1 ((AppOp1 y):t) (Num x) gamma -> State1 ((E y):(AppOp2 (I x)):t) y gamma
+    State1 ((AppOp2 (I x)):t) (Con "Nil") gamma -> State3 t (Cons x Nil) gamma
+    State3 ((AppOp2 (I x)):t) y gamma -> State3 t (Cons x y) gamma

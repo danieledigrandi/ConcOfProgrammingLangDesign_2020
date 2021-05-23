@@ -1,0 +1,94 @@
+
+-- evaluates variables
+evalE g (Var x) = case (E.lookup g x) of
+  (Just v) -> v
+  _        -> error $ "runtime error: undefined variable " ++ (show x)
+
+
+
+-- evaluates simple let bindings
+-- type information is ignored
+evalE g (Let [Bind x (_) [] e1] e2) =
+  let
+    e1' = evalE g e1         -- evaluates the binding expression
+    g'  = (E.add g (x, e1')) -- updates environment with new binding
+  in evalE g' e2             -- evaluates the body of the binding
+
+
+
+-- evaluates function applications
+evalE g (App e1 e2) =
+  let
+    v1@(Closure g' f x body) = evalE g e1
+    v2   = evalE g e2          -- evaluates function argument
+    g''  = (E.add g' (f, v1))  -- binds function name in body
+    g''' = (E.add g'' (x, v2)) -- binds function parameter in body
+  in evalE g''' body           -- evaluates function body
+
+
+
+-- evaluates function values
+-- type information is ignored
+evalE g (Letfun (Bind f (_) [] body)) =
+  let
+    g' = (E.add g (f, (evalE g body))) -- handles recursive references
+  in evalE g' body                     -- used for constructing infinite lists
+evalE g (Letfun (Bind f (_) [param] body)) = Closure g f param body
+
+
+-------------------------------------------------------------------------------------
+
+
+-- evaluates more general let bindings
+-- type information is passed through
+evalE g (Let (bindings) e2) =
+  let
+    g' = evalBindings g bindings -- adds bindings to the environment
+  in evalE g' e2                 -- evaluates the body of the binding
+
+
+-- terminates in error for all other expressions
+evalE _ e = error $ "runtime error: " ++ (show e)
+
+
+-- evaluates a list bindings under a given environment
+-- returns a new environment with all relevant bindings
+evalBindings :: VEnv -> [Bind] -> VEnv
+
+
+
+-- base case for multiple bindings
+evalBindings g [Bind x (_) [] e] =
+  let
+    e' = evalE g e            -- evaluates the binding expression
+    g' = (E.add g (x, e'))    -- updates environment with new binding
+  in g'
+
+
+
+-- recursive case for multiple bindings
+evalBindings g ((Bind x (_) [] e):xs) =
+  let
+    e'  = evalE g e           -- evaluates the binding expression
+    g'  = (E.add g (x, e'))   -- updates environment with new binding
+    g'' = evalBindings g' xs  -- evaluates the remaining bindings
+  in g''
+
+
+
+-- base case for let bindings which declare functions
+evalBindings g [Bind x (_) [param] e] =
+  let
+    e' = Closure g x param e  -- defines the function closure of the function
+    g' = (E.add g (x, e'))    -- adds the function closure to the environment
+  in g'
+
+
+
+-- recursive case for let bindings which declare functions
+evalBindings g ((Bind x (_) [param] e):xs) =
+  let
+    e'  = Closure g x param e -- defines the function closure of the function
+    g'  = (E.add g (x, e'))   -- adds the function closure to the environment
+    g'' = evalBindings g' xs  -- evaluates the remaining bindings
+  in g''
